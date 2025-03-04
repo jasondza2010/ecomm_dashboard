@@ -14,7 +14,7 @@ A project for loading and retrieving bulk order data across all customer eCommer
 
 | Parameter | Type     | Description                |
 | :-------- | :------- | :------------------------- |
-| `sales_date` | `string` | *Optional*. |
+| `date_range` | `string` | *Optional*. | 2023-01, 2023-02
 | `product_category` | `string` | *Optional*. |
 | `delivery_status` | `string` | *Optional*. |
 | `platform_id` | `int` | *Optional*. |
@@ -28,7 +28,7 @@ A project for loading and retrieving bulk order data across all customer eCommer
 
 | Parameter | Type     | Description                |
 | :-------- | :------- | :------------------------- |
-| `sales_date` | `string` | *Optional*. |
+| `date_range` | `string` | *Optional*. | 2023-01, 2023-02
 | `product_category` | `string` | *Optional*. |
 | `delivery_status` | `string` | *Optional*. |
 | `platform_id` | `int` | *Optional*. |
