@@ -177,7 +177,12 @@ def extract_order_data(request):
 
                 # Insert order details
                 order_details_values = [
-                    (record["OrderID"], record["ProductID"], record["SellingPrice"])
+                    (
+                        record["OrderID"],
+                        record["ProductID"],
+                        record["SellingPrice"],
+                        record["QuantitySold"],
+                    )
                     for record in records
                     if record["OrderID"] and record["ProductID"]
                 ]
@@ -185,7 +190,7 @@ def extract_order_data(request):
                 execute_values(
                     cursor,
                     """
-                    INSERT INTO order_details (order_id, product_id, selling_price)
+                    INSERT INTO order_details (order_id, product_id, selling_price, quantity_sold)
                     VALUES %s
                     """,
                     order_details_values,
