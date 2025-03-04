@@ -209,51 +209,40 @@ def orders_summary(request):
     API endpoint that returns revenue based on optional filters.
     """
     try:
-        # Retrieve optional filters from query parameters
-        filters = {
-            "sales_date": request.query_params.get("date_range", None),
-            "product_category": request.query_params.get("product_category", None),
-            "delivery_status": request.query_params.get("delivery_status", None),
-            "platform": request.query_params.get("platform", None),
-            "state": request.query_params.get("state", None),
-        }
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT o.delivery_status, od.selling_price, od.quantity_sold
+                FROM orders as o 
+                INNER JOIN order_details od ON o.id = od.order_id
+                INNER JOIN product p ON od.product_id = p.id
+                INNER JOIN customer_address_details cad ON o.customer_address_details_id = cad.id""",
+            )
+            order_data = cursor.fetchall()
 
         # Start with the full DataFrame
         filtered_data = pd.DataFrame(
-            [],
-            columns=[
-                "sales_date",
-                "product_category",
-                "delivery_status",
-                "platform",
-                "state",
-            ],
+            order_data,
+            columns=["delivery_status", "selling_price", "quantity_sold"],
+        )
+        total_orders = filtered_data.shape[0]
+        total_revenue = filtered_data["selling_price"].sum()
+        total_products_sold = filtered_data["quantity_sold"].sum()
+        canceled_order_percentage = (
+            filtered_data[filtered_data["delivery_status"] == "Cancelled"].shape[0]
+            / total_orders
+            * 100
         )
 
-        # Apply filters if provided
-        if filters["sales_date"]:
-            try:
-                start_date, end_date = filters["sales_date"].split(",")
-                filtered_data = filtered_data[
-                    (filtered_data["sales_date"] >= start_date)
-                    & (filtered_data["sales_date"] <= end_date)
-                ]
-            except ValueError:
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Invalid date range format. Use 'start_date,end_date'.",
-                    },
-                    status=400,
-                )
-
-        for key in ["product_category", "delivery_status", "platform", "state"]:
-            if filters[key]:
-                filtered_data = filtered_data[filtered_data[key] == filters[key]]
-
-        # Return the filtered results
         return Response(
-            {"status": "success", "data": filtered_data.to_dict(orient="records")}
+            {
+                "status": "success",
+                "data": {
+                    "total_orders": total_orders,
+                    "total_revenue": total_revenue,
+                    "total_products_sold": total_products_sold,
+                    "canceled_order_percentage": canceled_order_percentage,
+                },
+            }
         )
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
