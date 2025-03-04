@@ -13,11 +13,11 @@ class Platform(models.Model):
         db_table = "platform"
 
     def __str__(self):
-        return self.id
+        return self.name + " " + str(self.id)
 
 
 class Product(models.Model):
-    id = models.CharField(primary_key=True)
+    id = models.CharField(max_length=16)
     name = models.CharField(max_length=32)
     category = models.CharField(max_length=32)
     platform_id = models.ForeignKey(Platform, on_delete=models.CASCADE)
@@ -25,9 +25,10 @@ class Product(models.Model):
     class Meta:
         app_label = "visualizer"
         db_table = "product"
+        unique_together = ("id", "name", "category", "platform_id")
 
     def __str__(self):
-        return self.id
+        return self.name + " " + str(self.platform_id)
 
 
 class Customer(models.Model):
@@ -41,7 +42,7 @@ class Customer(models.Model):
         db_table = "customer"
 
     def __str__(self):
-        return self.id
+        return self.name + " " + str(self.platform_id)
 
 
 class CustomerAddressDetails(models.Model):
@@ -57,7 +58,9 @@ class CustomerAddressDetails(models.Model):
         db_table = "customer_address_details"
 
     def __str__(self):
-        return self.id
+        return (
+            self.street + " " + self.city + " " + self.state + " " + str(self.pincode)
+        )
 
 
 class Order(models.Model):
@@ -74,16 +77,30 @@ class Order(models.Model):
 
     class Meta:
         app_label = "visualizer"
-        db_table = "order"
+        db_table = "orders"
 
     def __str__(self):
-        return self.id
+        return (
+            str(self.id)
+            + " "
+            + str(self.customer_id)
+            + " "
+            + str(self.customer_address_details_id)
+            + " "
+            + str(self.platform_id)
+            + " "
+            + str(self.delivery_date)
+            + " "
+            + str(self.delivery_status)
+            + " "
+            + str(self.meta_data)
+        )
 
 
 class OrderDetails(models.Model):
     id = models.AutoField(primary_key=True)
     order_id = models.ForeignKey(Order, on_delete=models.CASCADE)
-    product_id = models.ForeignKey(Order, on_delete=models.CASCADE)
+    product_id = models.ForeignKey(Product, on_delete=models.CASCADE)
     selling_price = models.FloatField()
 
     class Meta:
@@ -91,4 +108,4 @@ class OrderDetails(models.Model):
         db_table = "order_details"
 
     def __str__(self):
-        return self.id
+        return str(self.order_id) + " " + str(self.product_id)
