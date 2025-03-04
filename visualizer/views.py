@@ -27,7 +27,7 @@ def line_chart_monthly_sales_volume(request):
         # Retrieve optional filters from query parameters
         filters = {
             "sales_date": request.query_params.get("date_range", None),
-            "product_category": request.query_params.get("product_category", None),
+            "category": request.query_params.get("product_category", None),
             "delivery_status": request.query_params.get("delivery_status", None),
             "platform_id": request.query_params.get("platform_id", None),
             "state": request.query_params.get("state", None),
@@ -63,9 +63,14 @@ def line_chart_monthly_sales_volume(request):
                     status=400,
                 )
 
-        for key in ["product_category", "delivery_status", "platform_id", "state"]:
+        for key in ["category", "delivery_status", "platform_id", "state"]:
             if filters[key]:
-                filtered_data = filtered_data[filtered_data[key] == int(filters[key])]
+                if key in ["platform_id"]:
+                    filtered_data = filtered_data[
+                        filtered_data[key] == int(filters[key])
+                    ]
+                else:
+                    filtered_data = filtered_data[filtered_data[key] == filters[key]]
 
         monthly_sales = (
             filtered_data.groupby(filtered_data["date_of_sale"].dt.strftime("%Y-%m"))[
@@ -124,7 +129,7 @@ def bar_chart_monthly_revenue(request):
         # Retrieve optional filters from query parameters
         filters = {
             "sales_date": request.query_params.get("date_range", None),
-            "product_category": request.query_params.get("product_category", None),
+            "category": request.query_params.get("product_category", None),
             "delivery_status": request.query_params.get("delivery_status", None),
             "platform_id": request.query_params.get("platform_id", None),
             "state": request.query_params.get("state", None),
@@ -161,9 +166,14 @@ def bar_chart_monthly_revenue(request):
                     status=400,
                 )
 
-        for key in ["product_category", "delivery_status", "platform_id", "state"]:
+        for key in ["category", "delivery_status", "platform_id", "state"]:
             if filters[key]:
-                filtered_data = filtered_data[filtered_data[key] == int(filters[key])]
+                if key in ["platform_id"]:
+                    filtered_data = filtered_data[
+                        filtered_data[key] == int(filters[key])
+                    ]
+                else:
+                    filtered_data = filtered_data[filtered_data[key] == filters[key]]
 
         monthly_sales = (
             filtered_data.groupby(filtered_data["date_of_sale"].dt.strftime("%Y-%m"))[
