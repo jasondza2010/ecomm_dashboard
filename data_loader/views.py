@@ -196,6 +196,9 @@ def extract_order_data(request):
                     order_details_values,
                 )
 
+                # Refresh materialized view
+                cursor.execute("REFRESH MATERIALIZED VIEW mv_order_details")
+
             return Response(
                 {
                     "status": "success",
