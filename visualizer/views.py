@@ -8,97 +8,95 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def build_filter_conditions(filters):
+    """Helper function to build WHERE conditions and params from filters"""
+    where_conditions = []
+    params = []
+
+    if filters["sales_date"]:
+        try:
+            start_date, end_date = filters["sales_date"].split(",")
+            start_date = f"{start_date}-01"
+            end_date = pd.to_datetime(f"{end_date}-01").replace(
+                day=1
+            ) + pd.offsets.MonthEnd(1)
+            end_date = end_date.strftime("%Y-%m-%d")
+            where_conditions.extend(["date_of_sale >= %s", "date_of_sale <= %s"])
+            params.extend([start_date, end_date])
+        except ValueError:
+            raise ValueError("Invalid date range format. Use 'start_date,end_date'.")
+
+    filter_mappings = {
+        "category": ("category = %s", str),
+        "delivery_status": ("delivery_status = %s", str),
+        "platform_id": ("platform_id = %s", int),
+        "state": ("state = %s", str),
+    }
+
+    for key, (condition, type_cast) in filter_mappings.items():
+        if filters[key]:
+            where_conditions.append(condition)
+            params.append(type_cast(filters[key]))
+
+    return where_conditions, params
+
+
+def get_filtered_data(query, filters):
+    """Helper function to execute query and return filtered data"""
+    where_conditions, params = build_filter_conditions(filters)
+
+    if where_conditions:
+        query += " WHERE " + " AND ".join(where_conditions)
+
+    with connection.cursor() as cursor:
+        cursor.execute(query, params)
+        return cursor.fetchall()
+
+
+def process_monthly_data(data, date_col, value_col, columns):
+    """Helper function to process monthly aggregations"""
+    df = pd.DataFrame(data, columns=columns)
+    df[date_col] = pd.to_datetime(df[date_col])
+
+    monthly_data = (
+        df.groupby(df[date_col].dt.strftime("%Y-%m"))[value_col]
+        .sum()
+        .reset_index()
+        .rename(columns={date_col: "month"})
+        .sort_values("month")
+    )
+
+    return {
+        "labels": monthly_data["month"].tolist(),
+        "values": monthly_data[value_col].tolist(),
+    }
+
 @api_view(["GET"])
 def line_chart_monthly_sales_volume(request):
-    """
-    API endpoint that returns sales volume based on optional filters.
-    """
+    """API endpoint that returns sales volume based on optional filters."""
     try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT o.date_of_sale, o.delivery_status, od.quantity_sold, o.platform_id, p.category, cad.state
-                FROM orders as o 
-                INNER JOIN order_details od ON o.id = od.order_id
-                INNER JOIN product p ON od.product_id = p.id
-                INNER JOIN customer_address_details cad ON o.customer_address_details_id = cad.id""",
-            )
-            order_data = cursor.fetchall()
-
-        # Retrieve optional filters from query parameters
         filters = {
-            "sales_date": request.query_params.get("date_range", None),
-            "category": request.query_params.get("product_category", None),
-            "delivery_status": request.query_params.get("delivery_status", None),
-            "platform_id": request.query_params.get("platform_id", None),
-            "state": request.query_params.get("state", None),
+            "sales_date": request.query_params.get("date_range"),
+            "category": request.query_params.get("product_category"),
+            "delivery_status": request.query_params.get("delivery_status"),
+            "platform_id": request.query_params.get("platform_id"),
+            "state": request.query_params.get("state"),
         }
-        # Start with the full DataFrame
-        filtered_data = pd.DataFrame(
-            order_data,
-            columns=[
-                "date_of_sale",
-                "delivery_status",
-                "quantity_sold",
-                "platform_id",
-                "category",
-                "state",
-            ],
-        )
-        filtered_data["date_of_sale"] = pd.to_datetime(filtered_data["date_of_sale"])
 
-        # Apply filters if provided
-        if filters["sales_date"]:
-            try:
-                start_date, end_date = filters["sales_date"].split(",")
-                filtered_data = filtered_data[
-                    (filtered_data["date_of_sale"] >= start_date)
-                    & (filtered_data["date_of_sale"] <= end_date)
-                ]
-            except ValueError:
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Invalid date range format. Use 'start_date,end_date'.",
-                    },
-                    status=400,
-                )
+        query = "SELECT date_of_sale, quantity_sold FROM mv_order_details"
+        data = get_filtered_data(query, filters)
 
-        for key in ["category", "delivery_status", "platform_id", "state"]:
-            if filters[key]:
-                if key in ["platform_id"]:
-                    filtered_data = filtered_data[
-                        filtered_data[key] == int(filters[key])
-                    ]
-                else:
-                    filtered_data = filtered_data[filtered_data[key] == filters[key]]
-
-        monthly_sales = (
-            filtered_data.groupby(filtered_data["date_of_sale"].dt.strftime("%Y-%m"))[
-                "quantity_sold"
-            ]
-            .sum()
-            .reset_index()
-            .rename(
-                columns={
-                    "date_of_sale": "month",
-                    "quantity_sold": "total_sales_quantity",
-                }
-            )
+        result = process_monthly_data(
+            data=data,
+            date_col="date_of_sale",
+            value_col="quantity_sold",
+            columns=["date_of_sale", "quantity_sold"],
         )
 
-        # Sort by month to ensure chronological order
-        monthly_sales = monthly_sales.sort_values("month")
+        return Response({"status": "success", "data": result})
 
-        # Return the filtered results
-        return Response(
-            {
-                "status": "success",
-                "data": {
-                    "labels": monthly_sales["month"].tolist(),
-                    "values": monthly_sales["total_sales_quantity"].tolist(),
-                },
-            }
-        )
+    except ValueError as ve:
+        return Response({"status": "error", "message": str(ve)}, status=400)
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return Response(
@@ -112,96 +110,30 @@ def line_chart_monthly_sales_volume(request):
 
 @api_view(["GET"])
 def bar_chart_monthly_revenue(request):
-    """
-    API endpoint that returns revenue based on optional filters.
-    """
+    """API endpoint that returns revenue based on optional filters."""
     try:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT o.date_of_sale, o.delivery_status, od.selling_price, o.platform_id, p.category, cad.state
-                FROM orders as o 
-                INNER JOIN order_details od ON o.id = od.order_id
-                INNER JOIN product p ON od.product_id = p.id
-                INNER JOIN customer_address_details cad ON o.customer_address_details_id = cad.id""",
-            )
-            order_data = cursor.fetchall()
-
-        # Retrieve optional filters from query parameters
         filters = {
-            "sales_date": request.query_params.get("date_range", None),
-            "category": request.query_params.get("product_category", None),
-            "delivery_status": request.query_params.get("delivery_status", None),
-            "platform_id": request.query_params.get("platform_id", None),
-            "state": request.query_params.get("state", None),
+            "sales_date": request.query_params.get("date_range"),
+            "category": request.query_params.get("product_category"),
+            "delivery_status": request.query_params.get("delivery_status"),
+            "platform_id": request.query_params.get("platform_id"),
+            "state": request.query_params.get("state"),
         }
 
-        # Start with the full DataFrame
-        filtered_data = pd.DataFrame(
-            order_data,
-            columns=[
-                "date_of_sale",
-                "delivery_status",
-                "selling_price",
-                "platform_id",
-                "category",
-                "state",
-            ],
-        )
-        filtered_data["date_of_sale"] = pd.to_datetime(filtered_data["date_of_sale"])
+        query = "SELECT date_of_sale, selling_price FROM mv_order_details"
+        data = get_filtered_data(query, filters)
 
-        # Apply filters if provided
-        if filters["sales_date"]:
-            try:
-                start_date, end_date = filters["sales_date"].split(",")
-                filtered_data = filtered_data[
-                    (filtered_data["date_of_sale"] >= start_date)
-                    & (filtered_data["date_of_sale"] <= end_date)
-                ]
-            except ValueError:
-                return Response(
-                    {
-                        "status": "error",
-                        "message": "Invalid date range format. Use 'start_date,end_date'.",
-                    },
-                    status=400,
-                )
-
-        for key in ["category", "delivery_status", "platform_id", "state"]:
-            if filters[key]:
-                if key in ["platform_id"]:
-                    filtered_data = filtered_data[
-                        filtered_data[key] == int(filters[key])
-                    ]
-                else:
-                    filtered_data = filtered_data[filtered_data[key] == filters[key]]
-
-        monthly_sales = (
-            filtered_data.groupby(filtered_data["date_of_sale"].dt.strftime("%Y-%m"))[
-                "selling_price"
-            ]
-            .sum()
-            .reset_index()
-            .rename(
-                columns={
-                    "date_of_sale": "month",
-                    "selling_price": "total_sales_value",
-                }
-            )
+        result = process_monthly_data(
+            data=data,
+            date_col="date_of_sale",
+            value_col="selling_price",
+            columns=["date_of_sale", "selling_price"],
         )
 
-        # Sort by month to ensure chronological order
-        monthly_sales = monthly_sales.sort_values("month")
+        return Response({"status": "success", "data": result})
 
-        # Return the filtered results
-        return Response(
-            {
-                "status": "success",
-                "data": {
-                    "labels": monthly_sales["month"].tolist(),
-                    "values": monthly_sales["total_sales_value"].tolist(),
-                },
-            }
-        )
+    except ValueError as ve:
+        return Response({"status": "error", "message": str(ve)}, status=400)
     except Exception as e:
         logger.error(f"Error processing request: {str(e)}")
         return Response(
