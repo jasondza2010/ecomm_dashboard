@@ -16,15 +16,12 @@ def build_filter_conditions(filters):
     if filters["sales_date"]:
         try:
             start_date, end_date = filters["sales_date"].split(",")
-            start_date = f"{start_date}-01"
-            end_date = pd.to_datetime(f"{end_date}-01").replace(
-                day=1
-            ) + pd.offsets.MonthEnd(1)
-            end_date = end_date.strftime("%Y-%m-%d")
             where_conditions.extend(["date_of_sale >= %s", "date_of_sale <= %s"])
             params.extend([start_date, end_date])
         except ValueError:
-            raise ValueError("Invalid date range format. Use 'start_date,end_date'.")
+            raise ValueError(
+                "Invalid date range format. Use 'start_date,end_date' in YYYY-MM-DD format."
+            )
 
     filter_mappings = {
         "category": ("category = %s", str),
